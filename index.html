@@ -136,7 +136,11 @@
     transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
   }
   .mode:hover .mode-card { border-color: var(--gray-300); }
-  .mode-input:checked + .mode-card { border-color: var(--brand-500); }
+  /* 选中态：除了品牌色描边，背景也带一点点品牌色底，和未选中拉开差别 */
+  .mode-input:checked + .mode-card {
+    border-color: var(--brand-500);
+    background: var(--brand-50);
+  }
   .mode-input:focus-visible + .mode-card { outline: 3px solid rgb(107 114 128 / .4); outline-offset: 2px; }
   .mode-input:disabled + .mode-card { opacity: .6; }
   .mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
