@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>代理模式切换 · proxy.i-xx.top</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#000000">
+<script>
+  /* 先于渲染决定主题，避免闪白。
+     默认暗色；用户手动选择后（localStorage: pac-theme）以选择为准，不再跟随系统。 */
+  (function () {
+    var saved = null;
+    try { saved = window.localStorage.getItem('pac-theme'); } catch (e) { saved = null; }
+    if (saved ? saved === 'dark' : true) {
+      document.documentElement.classList.add('dark');
+    }
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --brand-50: #e8f0fe; --brand-100: #d2e3fc; --brand-300: #8ab4f8; --brand-500: #4285f4;
+    --brand-600: #1a73e8; --brand-700: #0b57d0;
+    --gray-50: #f9fafb; --gray-100: #f3f4f6; --gray-200: #e5e7eb; --gray-300: #d1d5db;
+    --gray-400: #9ca3af; --gray-500: #6b7280; --gray-600: #4b5563; --gray-900: #111827;
+    --bg: #ffffff; --surface: #ffffff; --border: var(--gray-200); --control-border: var(--gray-300);
+    --fg: var(--gray-900); --fg-muted: var(--gray-600); --fg-faint: var(--gray-500);
+    --accent-bg: #111827; --accent-fg: #ffffff;
+    --radius-control: 6px; --radius-card: 12px;
+    --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+    --ok-bg: #f0fdf4; --ok-fg: #15803d; --ok-border: #bbf7d0;
+    --err-bg: #fef2f2; --err-fg: #b91c1c; --err-border: #fecaca;
+  }
+  .dark {
+    color-scheme: dark;
+    --bg: #000000; --surface: #0d0d0d; --border: #1f1f1f; --control-border: #303030;
+    --fg: #f3f4f6; --fg-muted: #9ca3af; --fg-faint: #6b7280;
+    --accent-bg: #f3f4f6; --accent-fg: #111827;
+    --brand-600: #8ab4f8; --brand-700: #8ab4f8;
+    --brand-50: #17233a; --brand-100: #24334d; /* 暗色下的品牌色底，保证 chip 对比度 */
+    --gray-50: #0d0d0d; --gray-100: #1f1f1f; --gray-200: #1f1f1f; --gray-300: #303030;
+    --ok-bg: #052e16; --ok-fg: #4ade80; --ok-border: #14532d;
+    --err-bg: #450a0a; --err-fg: #f87171; --err-border: #7f1d1d;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  h1, h2 { font-weight: 600; letter-spacing: -0.025em; margin: 0; }
+  p { margin: 0; }
+  a { color: var(--brand-700); }
+  button {
+    font: inherit; cursor: pointer; border-radius: var(--radius-control);
+    transition: color 150ms var(--ease), background-color 150ms var(--ease), border-color 150ms var(--ease);
+  }
+  :focus-visible { outline: 3px solid rgb(107 114 128 / .4); outline-offset: 2px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  code, pre, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* nav */
+  .nav {
+    position: sticky; top: 0; z-index: 10; height: 56px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .nav-inner {
+    max-width: 60rem; margin: 0 auto; height: 100%; padding: 0 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .mark {
+    width: 28px; height: 28px; border-radius: 8px; background: var(--accent-bg);
+    color: var(--accent-fg);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mark svg { display: block; width: 17px; height: 17px; }
+  .brand-name { font-size: 15px; font-weight: 600; letter-spacing: -0.025em; }
+  .icon-btn {
+    width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--control-border); color: var(--fg-muted);
+  }
+  .icon-btn:hover { background: var(--gray-100); color: var(--fg); }
+  /* 亮色下显示月亮（点了变暗），暗色下显示太阳 */
+  .icon-sun { display: none; }
+  .dark .icon-sun { display: block; }
+  .dark .icon-moon { display: none; }
+
+  /* layout */
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 40px 16px 72px; }
+  .hero { text-align: center; margin-bottom: 32px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--brand-600); margin-bottom: 10px;
+  }
+  h1 { font-size: 30px; line-height: 1.2; }
+  .lede { color: var(--fg-muted); margin-top: 12px; }
+  .section-title { font-size: 16px; margin-bottom: 4px; }
+  .hint { color: var(--fg-muted); font-size: 13px; margin-top: 4px; }
+
+  .status { margin-top: 16px; display: flex; justify-content: center; }
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 8px; border-radius: 9999px;
+    border: 1px solid var(--border); padding: 5px 12px; font-size: 13px; color: var(--fg-muted);
+    background: var(--surface);
+  }
+  .status-chip.ok { border-color: var(--ok-border); background: var(--ok-bg); color: var(--ok-fg); }
+  .status-chip.err { border-color: var(--err-border); background: var(--err-bg); color: var(--err-fg); }
+  .dot { width: 7px; height: 7px; border-radius: 9999px; background: var(--brand-500); }
+  .status-chip.err .dot { background: var(--err-fg); }
+  .skel {
+    display: inline-block; height: 13px; width: 120px; border-radius: 6px;
+    background: var(--gray-100); animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+
+  /* mode cards */
+  .grid { display: grid; gap: 16px; margin-top: 20px; }
+  .mode { position: relative; display: block; }
+  .mode-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .mode-card {
+    display: block; height: 100%; padding: 18px; border-radius: var(--radius-card);
+    border: 1px solid var(--border); background: var(--surface);
+    transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
+  }
+  .mode:hover .mode-card { border-color: var(--gray-300); }
+  .mode-input:checked + .mode-card { border-color: var(--brand-500); }
+  .mode-input:focus-visible + .mode-card { outline: 3px solid rgb(107 114 128 / .4); outline-offset: 2px; }
+  .mode-input:disabled + .mode-card { opacity: .6; }
+  .mode-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mode-title { font-size: 16px; font-weight: 600; letter-spacing: -0.025em; }
+  .chip {
+    display: none; border-radius: 9999px; padding: 3px 9px; font-size: 12px;
+    background: var(--brand-50); color: var(--brand-700); border: 1px solid var(--brand-100);
+    white-space: nowrap;
+  }
+  .mode-input:checked + .mode-card .chip { display: inline-block; }
+  .mode-desc { display: block; color: var(--fg-muted); font-size: 13px; margin-top: 8px; }
+  .mode-tag {
+    display: inline-block; margin-top: 14px; font-size: 12px; color: var(--fg-faint);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* cards + code */
+  .card {
+    border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface);
+    padding: 20px; margin-top: 20px;
+  }
+  .code {
+    margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius-card);
+    background: var(--gray-50); overflow: hidden;
+  }
+  .code-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; color: var(--fg-faint);
+  }
+  .code-body {
+    padding: 12px; font-size: 13px; line-height: 1.85; word-break: break-all;
+  }
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 32px;
+    background: var(--surface); color: var(--fg); border: 1px solid var(--control-border);
+    padding: 5px 10px; font-size: 13px; font-weight: 500;
+  }
+  .btn-secondary:hover { background: var(--gray-100); }
+  .field { margin-top: 16px; }
+  .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
+  .field input {
+    width: 100%; min-height: 40px; padding: 8px 12px; font: inherit;
+    color: var(--fg); background: var(--surface);
+    border: 1px solid var(--control-border); border-radius: var(--radius-control);
+  }
+  .field input:focus { outline: none; border-color: var(--gray-500); box-shadow: 0 0 0 2px rgb(156 163 175 / .3); }
+  .field input.bad { border-color: var(--err-border); }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+    background: var(--accent-bg); color: var(--accent-fg);
+    border: 1px solid transparent; padding: 6px 14px; font-size: 13px; font-weight: 500;
+  }
+  .btn-primary:hover { opacity: .9; }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: .55; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .row input { flex: 1; min-width: 0; }
+  .row .btn-secondary { min-height: 40px; white-space: nowrap; }
+
+  .facts { margin: 18px 0 0; padding: 0; }
+  .facts > div {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    padding: 9px 0; border-top: 1px solid var(--border);
+  }
+  .facts > div:first-child { border-top: 0; }
+  .facts dt { color: var(--fg-muted); font-size: 13px; }
+  .facts dd {
+    margin: 0; font-size: 13px; text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .facts dd.warn { color: var(--err-fg); }
+  .facts dd.ok { color: var(--ok-fg); }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+  .actions .hint { margin: 0; }
+
+  .links { list-style: none; margin: 12px 0 0; padding: 0; }
+  .links li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+  .links li:first-child { border-top: 0; }
+  .links a { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .links span { color: var(--fg-muted); font-size: 13px; }
+  .links .copy-btn { margin-left: auto; min-height: 40px; flex-shrink: 0; }
+
+  /* 卡片折叠：桌面端始终展开，移动端默认折叠（除模式卡片） */
+  .card > details.fold > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    min-height: 44px; cursor: pointer; list-style: none;
+  }
+  .card > details.fold > summary::-webkit-details-marker { display: none; }
+  .card > details.fold > summary > h2 { margin: 0; }
+  .fold-body { margin-top: 14px; }
+  .chev { flex-shrink: 0; color: var(--fg-faint); transition: transform 200ms var(--ease); }
+  details[open] > summary > .chev { transform: rotate(90deg); }
+
+  @media (min-width: 640px) {
+    .card > details.fold > summary { cursor: default; }
+    .card > details.fold > summary > .chev { display: none; }
+  }
+
+  /* 客户端配置帮助（默认折叠） */
+  .help { margin-top: 4px; border-top: 1px solid var(--border); }
+  .help:first-of-type { border-top: 0; }
+  .help > summary {
+    display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 0;
+    cursor: pointer; font-size: 14px; font-weight: 500; list-style: none;
+    transition: color 150ms var(--ease);
+  }
+  .help > summary::-webkit-details-marker { display: none; }
+  .help > summary:hover { color: var(--brand-700); }
+  .help-body { padding: 2px 0 14px 24px; color: var(--fg-muted); font-size: 13px; }
+  .help-body ol { margin: 6px 0 0; padding-left: 18px; }
+  .help-body li { margin-top: 5px; }
+  .help-body code {
+    background: var(--gray-50); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-size: 12px; color: var(--fg); word-break: break-all;
+  }
+  .help-note { margin-top: 10px; color: var(--fg-faint); font-size: 12px; }
+
+  .foot { color: var(--fg-faint); font-size: 12px; text-align: center; padding: 0 16px 40px; }
+
+  /* 移动端合并面板 */
+  .mobile-settings { display: block; }
+  .desktop-only { display: none; }
+
+  .mobile-section {
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+  }
+  .mobile-section:first-child { border-top: 0; padding-top: 0; }
+  .mobile-section:last-child { padding-bottom: 0; }
+
+  .mobile-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--fg);
+  }
+
+  /* toast */
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 20;
+    display: flex; justify-content: center; pointer-events: none;
+  }
+  .toast-inner {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-size: 13px; opacity: 0; transform: translateY(10px);
+    transition: opacity 120ms var(--ease), transform 200ms var(--ease);
+  }
+  .toast.show .toast-inner { opacity: 1; transform: none; }
+
+  @media (min-width: 640px) {
+    .wrap { padding: 56px 24px 88px; }
+    h1 { font-size: 34px; }
+    .grid { grid-template-columns: repeat(3, 1fr); }
+    .toast { left: auto; right: 20px; bottom: 20px; justify-content: flex-end; }
+
+    /* 桌面端：隐藏合并面板，显示独立面板 */
+    .mobile-settings { display: none; }
+    .desktop-only { display: block; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11.6 8.5V23.5"></path>
+          <path d="M11.6 8.5h4.7a4.2 4.2 0 0 1 0 8.4h-4.7"></path>
+        </svg>
+      </span>
+      <span class="brand-name">proxy.i-xx.top</span>
+    </div>
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="切换深色模式" title="切换主题">
+      <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+      <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.5"></circle>
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M19.1 4.9l-1.5 1.5M6.4 17.6l-1.5 1.5"></path>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <p class="eyebrow">PAC 自动代理</p>
+    <h1>代理模式切换</h1>
+    <p class="lede">客户端只配一个固定地址，模式在这里切换，改完立即生效。</p>
+    <div class="status" id="status" aria-live="polite">
+      <span class="status-chip"><span class="skel" aria-hidden="true"></span><span class="sr-only">正在读取当前模式</span></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="modes-title">
+    <h2 id="modes-title" class="sr-only">选择代理模式</h2>
+    <div class="grid" id="modes">
+      <label class="mode">
+        <input class="mode-input" type="radio" name="mode" value="split" disabled>
+        <span class="mode-card">
+          <span class="mode-head">
+            <span class="mode-title">分流模式</span>
+            <span class="chip">当前使用</span>
+          </span>
+          <span class="mode-desc">国内站点直连，海外站点走代理 192.168.31.161:7890。</span>
+          <span class="mode-tag">proxy.pac</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input class="mode-input" type="radio" name="mode" value="direct" disabled>
+        <span class="mode-card">
+          <span class="mode-head">
+            <span class="mode-title">全直连</span>
+            <span class="chip">当前使用</span>
+          </span>
+          <span class="mode-desc">不使用任何代理，全部请求直接连接。</span>
+          <span class="mode-tag">direct.pac</span>
+        </span>
+      </label>
+      <label class="mode">
+        <input class="mode-input" type="radio" name="mode" value="global" disabled>
+        <span class="mode-card">
+          <span class="mode-head">
+            <span class="mode-title">全代理</span>
+            <span class="chip">当前使用</span>
+          </span>
+          <span class="mode-desc">所有请求都走 192.168.31.161:7890，代理不通时直连。</span>
+          <span class="mode-tag">global.pac</span>
+        </span>
+      </label>
+    </div>
+  </section>
+
+  <!-- 移动端合并面板 -->
+  <section class="card mobile-settings" aria-labelledby="mobile-settings-title">
+    <details class="fold">
+      <summary>
+        <h2 id="mobile-settings-title" class="section-title">PAC 设置</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+        <!-- PAC 地址 -->
+        <div class="mobile-section">
+          <h3 class="mobile-section-title">PAC 地址</h3>
+          <p class="hint">在系统或浏览器的「自动代理配置」里填这个地址，之后切换模式不用再改客户端。</p>
+          <div class="code">
+            <div class="code-head">
+              <span>pac url</span>
+              <button id="copy-btn-mobile" class="btn-secondary" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                复制
+              </button>
+            </div>
+            <div class="code-body" id="pac-url-mobile">https://proxy.i-xx.top/pac</div>
+          </div>
+
+          <div class="field" id="token-box-mobile" hidden>
+            <label for="token-mobile">切换密钥</label>
+            <input id="token-mobile" type="password" autocomplete="off" placeholder="输入密钥后即可切换">
+            <p class="hint" id="token-hint-mobile">首次切换需要填写密钥，浏览器会记住它（只存在本机）。</p>
+          </div>
+        </div>
+
+        <!-- PAC 信息 -->
+        <div class="mobile-section">
+          <h3 class="mobile-section-title">PAC 信息</h3>
+          <p class="hint">改代理地址或更新域名名单后，proxy.pac 与 global.pac 会立即重新生成。</p>
+
+          <div class="field">
+            <label for="proxy-addr-mobile">代理服务器地址</label>
+            <div class="row">
+              <input id="proxy-addr-mobile" type="text" spellcheck="false" autocomplete="off"
+                     placeholder="192.168.31.161:7890" aria-describedby="proxy-hint-mobile">
+              <button id="save-proxy-mobile" class="btn-secondary" type="button">保存</button>
+            </div>
+            <p class="hint" id="proxy-hint-mobile">格式为 IP 或主机名，可带端口，例如 192.168.31.161:7890。</p>
+          </div>
+
+          <dl class="facts">
+            <div><dt>国内直连规则</dt><dd id="fact-rules-mobile">—</dd></div>
+            <div><dt>名单生成日期</dt><dd id="fact-date-mobile">—</dd></div>
+            <div><dt>最近渲染</dt><dd id="fact-rendered-mobile">—</dd></div>
+            <div><dt>更新状态</dt><dd id="fact-status-mobile">—</dd></div>
+          </dl>
+
+          <div class="actions">
+            <button id="update-rules-mobile" class="btn-primary" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path>
+              </svg>
+              从上游更新域名名单
+            </button>
+            <span class="hint">重新抓取国内域名源与热门站点清单后匹配生成，通常不到 1 分钟。</span>
+          </div>
+        </div>
+
+        <!-- 客户端配置帮助 -->
+        <div class="mobile-section">
+          <h3 class="mobile-section-title">客户端配置帮助</h3>
+          <p class="hint">设备要和代理服务器 192.168.31.161 在同一局域网（192.168.31.x）；点开对应系统查看步骤。</p>
+
+          <details class="help">
+            <summary>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 6l6 6-6 6"></path>
+              </svg>
+              Windows 10 / 11
+            </summary>
+            <div class="help-body">
+              <ol>
+                <li>打开 <strong>设置 → 网络和 Internet → 代理</strong></li>
+                <li>打开「<strong>使用设置脚本</strong>」，脚本地址填 <code>https://proxy.i-xx.top/pac</code></li>
+                <li>点<strong>保存</strong>；同一页面上的「手动设置代理」保持关闭</li>
+              </ol>
+              <p class="help-note">旧系统可在「Internet 选项 → 连接 → 局域网设置」勾选「使用自动配置脚本」，填同一地址。Edge / Chrome 跟随系统设置，Firefox 默认也跟随。</p>
+            </div>
+          </details>
+
+          <details class="help">
+            <summary>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 6l6 6-6 6"></path>
+              </svg>
+              macOS
+            </summary>
+            <div class="help-body">
+              <ol>
+                <li>打开 <strong>系统设置 → 网络</strong>，选中正在使用的 Wi-Fi 或以太网</li>
+                <li>点<strong>详细信息…</strong> → <strong>代理</strong></li>
+                <li>勾选「<strong>自动代理配置</strong>」，URL 填 <code>https://proxy.i-xx.top/pac</code></li>
+                <li>点<strong>好</strong>，再点<strong>应用</strong></li>
+              </ol>
+              <p class="help-note">macOS 13 之前是「系统偏好设置 → 网络 → 高级 → 代理」。Safari、Chrome 跟随系统设置。</p>
+            </div>
+          </details>
+
+          <details class="help">
+            <summary>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 6l6 6-6 6"></path>
+              </svg>
+              iPhone / iPad
+            </summary>
+            <div class="help-body">
+              <ol>
+                <li>打开 <strong>设置 → 无线局域网</strong>，点当前 Wi-Fi 右边的 <strong>ⓘ</strong></li>
+                <li>拉到底部<strong>配置代理</strong>，选「<strong>自动</strong>」</li>
+                <li>URL 填 <code>https://proxy.i-xx.top/pac</code>，点<strong>存储</strong></li>
+              </ol>
+              <p class="help-note">蜂窝网络不支持 PAC；换 Wi-Fi 或重连后可能需要在同一页面重新确认设置。</p>
+            </div>
+          </details>
+
+          <details class="help">
+            <summary>
+              <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 6l6 6-6 6"></path>
+              </svg>
+              Android
+            </summary>
+            <div class="help-body">
+              <ol>
+                <li>打开 <strong>设置 → WLAN</strong>，长按（或点齿轮进入）当前网络 → <strong>修改网络</strong></li>
+                <li>展开<strong>高级选项</strong>，把<strong>代理</strong>设为「<strong>自动</strong>」</li>
+                <li>PAC 网址填 <code>https://proxy.i-xx.top/pac</code>，保存</li>
+              </ol>
+              <p class="help-note">部分机型只有「手动」选项，那就填主机名 <code>192.168.31.161</code>、端口 <code>7890</code>；也有部分 App（如 Android 版 Chrome）不读系统代理设置。</p>
+            </div>
+          </details>
+
+          <p class="help-note">配好后用浏览器打开 <code>https://proxy.i-xx.top/</code> 即可随时切换模式；改完模式 Windows / macOS 通常几十秒内自动重新读取 PAC，想立刻生效就重启浏览器。</p>
+        </div>
+
+        <!-- 固定模式地址 -->
+        <div class="mobile-section">
+          <h3 class="mobile-section-title">固定模式地址（备用）</h3>
+          <p class="hint">需要固定某种模式、不受切换影响的设备，可以直接用下面这些地址。</p>
+          <ul class="links">
+            <li>
+              <a href="/proxy.pac">/proxy.pac</a><span>国内直连，海外走代理</span>
+              <button class="btn-secondary copy-btn" type="button" data-path="/proxy.pac" data-label="proxy.pac"
+                      aria-label="复制 proxy.pac 的完整地址">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                复制
+              </button>
+            </li>
+            <li>
+              <a href="/direct.pac">/direct.pac</a><span>全部直连</span>
+              <button class="btn-secondary copy-btn" type="button" data-path="/direct.pac" data-label="direct.pac"
+                      aria-label="复制 direct.pac 的完整地址">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                复制
+              </button>
+            </li>
+            <li>
+              <a href="/global.pac">/global.pac</a><span>全部走代理</span>
+              <button class="btn-secondary copy-btn" type="button" data-path="/global.pac" data-label="global.pac"
+                      aria-label="复制 global.pac 的完整地址">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                复制
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <!-- 桌面端独立面板 -->
+  <section class="card desktop-only" aria-labelledby="url-title">
+    <details class="fold" open>
+      <summary>
+        <h2 id="url-title" class="section-title">PAC 地址</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+      <p class="hint">在系统或浏览器的「自动代理配置」里填这个地址，之后切换模式不用再改客户端。</p>
+      <div class="code">
+        <div class="code-head">
+          <span>pac url</span>
+          <button id="copy-btn" class="btn-secondary" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            复制
+          </button>
+        </div>
+        <div class="code-body" id="pac-url">https://proxy.i-xx.top/pac</div>
+      </div>
+
+      <div class="field" id="token-box" hidden>
+        <label for="token">切换密钥</label>
+        <input id="token" type="password" autocomplete="off" placeholder="输入密钥后即可切换">
+        <p class="hint" id="token-hint">首次切换需要填写密钥，浏览器会记住它（只存在本机）。</p>
+      </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card desktop-only" aria-labelledby="info-title">
+    <details class="fold" open>
+      <summary>
+        <h2 id="info-title" class="section-title">PAC 信息</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+      <p class="hint">改代理地址或更新域名名单后，proxy.pac 与 global.pac 会立即重新生成。</p>
+
+      <div class="field">
+        <label for="proxy-addr">代理服务器地址</label>
+        <div class="row">
+          <input id="proxy-addr" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="192.168.31.161:7890" aria-describedby="proxy-hint">
+          <button id="save-proxy" class="btn-secondary" type="button">保存</button>
+        </div>
+        <p class="hint" id="proxy-hint">格式为 IP 或主机名，可带端口，例如 192.168.31.161:7890。</p>
+      </div>
+
+      <dl class="facts">
+        <div><dt>国内直连规则</dt><dd id="fact-rules">—</dd></div>
+        <div><dt>名单生成日期</dt><dd id="fact-date">—</dd></div>
+        <div><dt>最近渲染</dt><dd id="fact-rendered">—</dd></div>
+        <div><dt>更新状态</dt><dd id="fact-status">—</dd></div>
+      </dl>
+
+      <div class="actions">
+        <button id="update-rules" class="btn-primary" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path>
+          </svg>
+          从上游更新域名名单
+        </button>
+        <span class="hint">重新抓取国内域名源与热门站点清单后匹配生成，通常不到 1 分钟。</span>
+      </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card desktop-only" aria-labelledby="help-title">
+    <details class="fold" open>
+      <summary>
+        <h2 id="help-title" class="section-title">客户端配置帮助</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+      <p class="hint">设备要和代理服务器 192.168.31.161 在同一局域网（192.168.31.x）；点开对应系统查看步骤。</p>
+
+      <details class="help">
+        <summary>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6"></path>
+          </svg>
+          Windows 10 / 11
+        </summary>
+        <div class="help-body">
+          <ol>
+            <li>打开 <strong>设置 → 网络和 Internet → 代理</strong></li>
+            <li>打开「<strong>使用设置脚本</strong>」，脚本地址填 <code>https://proxy.i-xx.top/pac</code></li>
+            <li>点<strong>保存</strong>；同一页面上的「手动设置代理」保持关闭</li>
+          </ol>
+          <p class="help-note">旧系统可在「Internet 选项 → 连接 → 局域网设置」勾选「使用自动配置脚本」，填同一地址。Edge / Chrome 跟随系统设置，Firefox 默认也跟随。</p>
+        </div>
+      </details>
+
+      <details class="help">
+        <summary>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6"></path>
+          </svg>
+          macOS
+        </summary>
+        <div class="help-body">
+          <ol>
+            <li>打开 <strong>系统设置 → 网络</strong>，选中正在使用的 Wi-Fi 或以太网</li>
+            <li>点<strong>详细信息…</strong> → <strong>代理</strong></li>
+            <li>勾选「<strong>自动代理配置</strong>」，URL 填 <code>https://proxy.i-xx.top/pac</code></li>
+            <li>点<strong>好</strong>，再点<strong>应用</strong></li>
+          </ol>
+          <p class="help-note">macOS 13 之前是「系统偏好设置 → 网络 → 高级 → 代理」。Safari、Chrome 跟随系统设置。</p>
+        </div>
+      </details>
+
+      <details class="help">
+        <summary>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6"></path>
+          </svg>
+          iPhone / iPad
+        </summary>
+        <div class="help-body">
+          <ol>
+            <li>打开 <strong>设置 → 无线局域网</strong>，点当前 Wi-Fi 右边的 <strong>ⓘ</strong></li>
+            <li>拉到底部<strong>配置代理</strong>，选「<strong>自动</strong>」</li>
+            <li>URL 填 <code>https://proxy.i-xx.top/pac</code>，点<strong>存储</strong></li>
+          </ol>
+          <p class="help-note">蜂窝网络不支持 PAC；换 Wi-Fi 或重连后可能需要在同一页面重新确认设置。</p>
+        </div>
+      </details>
+
+      <details class="help">
+        <summary>
+          <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6"></path>
+          </svg>
+          Android
+        </summary>
+        <div class="help-body">
+          <ol>
+            <li>打开 <strong>设置 → WLAN</strong>，长按（或点齿轮进入）当前网络 → <strong>修改网络</strong></li>
+            <li>展开<strong>高级选项</strong>，把<strong>代理</strong>设为「<strong>自动</strong>」</li>
+            <li>PAC 网址填 <code>https://proxy.i-xx.top/pac</code>，保存</li>
+          </ol>
+          <p class="help-note">部分机型只有「手动」选项，那就填主机名 <code>192.168.31.161</code>、端口 <code>7890</code>；也有部分 App（如 Android 版 Chrome）不读系统代理设置。</p>
+        </div>
+      </details>
+
+      <p class="help-note">配好后用浏览器打开 <code>https://proxy.i-xx.top/</code> 即可随时切换模式；改完模式 Windows / macOS 通常几十秒内自动重新读取 PAC，想立刻生效就重启浏览器。</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="card desktop-only" aria-labelledby="fixed-title">
+    <details class="fold" open>
+      <summary>
+        <h2 id="fixed-title" class="section-title">固定模式地址（备用）</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+      <p class="hint">需要固定某种模式、不受切换影响的设备，可以直接用下面这些地址。</p>
+      <ul class="links">
+        <li>
+          <a href="/proxy.pac">/proxy.pac</a><span>国内直连，海外走代理</span>
+          <button class="btn-secondary copy-btn" type="button" data-path="/proxy.pac" data-label="proxy.pac"
+                  aria-label="复制 proxy.pac 的完整地址">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            复制
+          </button>
+        </li>
+        <li>
+          <a href="/direct.pac">/direct.pac</a><span>全部直连</span>
+          <button class="btn-secondary copy-btn" type="button" data-path="/direct.pac" data-label="direct.pac"
+                  aria-label="复制 direct.pac 的完整地址">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            复制
+          </button>
+        </li>
+        <li>
+          <a href="/global.pac">/global.pac</a><span>全部走代理</span>
+          <button class="btn-secondary copy-btn" type="button" data-path="/global.pac" data-label="global.pac"
+                  aria-label="复制 global.pac 的完整地址">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            复制
+          </button>
+        </li>
+      </ul>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer class="foot">代理服务器 <span id="foot-proxy">192.168.31.161:7890</span> · 仅在同一局域网内有效</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"><div class="toast-inner"></div></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var LABELS = { split: '分流模式', direct: '全直连', global: '全代理' };
+  var TOKEN_KEY = 'pac-switch-token';
+
+  var statusEl = document.getElementById('status');
+  var gridEl = document.getElementById('modes');
+  var inputs = Array.prototype.slice.call(gridEl.querySelectorAll('.mode-input'));
+  var tokenBox = document.getElementById('token-box');
+  var tokenInput = document.getElementById('token');
+  var tokenHint = document.getElementById('token-hint');
+  var toastEl = document.getElementById('toast');
+  var toastInner = toastEl.querySelector('.toast-inner');
+  var copyBtn = document.getElementById('copy-btn');
+
+  var token = '';
+  try { token = window.localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { token = ''; }
+  tokenInput.value = token;
+
+  var current = null;
+  var busy = false;
+
+  function setStatus(kind, text) {
+    statusEl.innerHTML = '';
+    var chip = document.createElement('span');
+    chip.className = 'status-chip' + (kind ? ' ' + kind : '');
+    if (kind === 'loading') {
+      var sk = document.createElement('span');
+      sk.className = 'skel';
+      sk.setAttribute('aria-hidden', 'true');
+      chip.appendChild(sk);
+      var sr = document.createElement('span');
+      sr.className = 'sr-only';
+      sr.textContent = text;
+      chip.appendChild(sr);
+    } else {
+      var d = document.createElement('span');
+      d.className = 'dot';
+      d.setAttribute('aria-hidden', 'true');
+      chip.appendChild(d);
+      var t = document.createElement('span');
+      t.textContent = text;
+      chip.appendChild(t);
+    }
+    statusEl.appendChild(chip);
+  }
+
+  function toast(message) {
+    toastInner.textContent = message;
+    toastEl.classList.add('show');
+    window.clearTimeout(toast._timer);
+    toast._timer = window.setTimeout(function () { toastEl.classList.remove('show'); }, 3200);
+  }
+
+  function setEnabled(on) {
+    inputs.forEach(function (input) { input.disabled = !on; });
+  }
+
+  function select(mode) {
+    inputs.forEach(function (input) { input.checked = (input.value === mode); });
+  }
+
+  function showError(message) {
+    setStatus('err', message);
+  }
+
+  function readMode() {
+    setStatus('loading', '正在读取当前模式');
+    setEnabled(false);
+    fetch('/api/mode', { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(function (data) {
+        current = data.mode;
+        select(current);
+        setEnabled(true);
+        tokenBox.hidden = !data.token_required;
+        syncMobileTokenBox();
+        setStatus('ok', '当前：' + (LABELS[current] || current));
+      })
+      .catch(function () {
+        showError('读取当前模式失败，请检查网络后重试');
+        var wrap = document.createElement('button');
+        wrap.type = 'button';
+        wrap.className = 'btn-secondary';
+        wrap.style.marginLeft = '10px';
+        wrap.textContent = '重试';
+        wrap.addEventListener('click', readMode);
+        statusEl.firstChild.appendChild(wrap);
+        inputs.forEach(function (input) { input.disabled = true; });
+      });
+  }
+
+  function switchTo(mode) {
+    if (busy || mode === current) { return; }
+    busy = true;
+    setEnabled(false);
+    var body = 'mode=' + encodeURIComponent(mode) + '&token=' + encodeURIComponent(token);
+    fetch('/api/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body,
+      cache: 'no-store'
+    }).then(function (r) {
+      return r.json().catch(function () { throw new Error('HTTP ' + r.status); })
+        .then(function (data) { return { status: r.status, data: data }; });
+    }).then(function (res) {
+      if (!res.data.ok) {
+        if (res.status === 403) {
+          tokenBox.hidden = false;
+          syncMobileTokenBox();
+          tokenInput.classList.add('bad');
+          tokenHint.textContent = '密钥不正确，请重新填写。';
+          tokenInput.focus();
+          throw new Error('密钥不正确');
+        }
+        throw new Error(res.data.error || ('HTTP ' + res.status));
+      }
+      current = res.data.mode;
+      select(current);
+      tokenInput.classList.remove('bad');
+      tokenHint.textContent = '首次切换需要填写密钥，浏览器会记住它（只存在本机）。';
+      syncMobileTokenBox();
+      setStatus('ok', '当前：' + (LABELS[current] || current));
+      toast('已切换到' + (LABELS[current] || current));
+    }).catch(function (err) {
+      select(current);
+      toast('切换失败：' + err.message);
+      if (statusEl.firstChild && !/密钥/.test(err.message)) {
+        setStatus('err', '切换失败：' + err.message);
+      }
+    }).then(function () {
+      busy = false;
+      setEnabled(true);
+    });
+  }
+
+  gridEl.addEventListener('change', function (event) {
+    if (event.target && event.target.name === 'mode') { switchTo(event.target.value); }
+  });
+
+  tokenInput.addEventListener('input', function () {
+    token = tokenInput.value.trim();
+    try {
+      if (token) { window.localStorage.setItem(TOKEN_KEY, token); }
+      else { window.localStorage.removeItem(TOKEN_KEY); }
+    } catch (e) { /* 隐私模式下写入失败，忽略 */ }
+    tokenInput.classList.remove('bad');
+  });
+
+  function copyText(text, okMessage) {
+    function done() { toast(okMessage); }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', 'readonly');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败，请手动选择'); }
+      document.body.removeChild(ta);
+    }
+    if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
+      window.navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  copyBtn.addEventListener('click', function () {
+    copyText(document.getElementById('pac-url').textContent.trim(), '已复制 PAC 地址');
+  });
+
+  /* 固定模式地址的快捷复制 */
+  Array.prototype.slice.call(document.querySelectorAll('.copy-btn')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var path = btn.getAttribute('data-path') || '';
+      var label = btn.getAttribute('data-label') || path;
+      copyText(window.location.origin + path, '已复制 ' + label + ' 完整地址');
+    });
+  });
+
+  /* ---------- PAC 信息与维护 ---------- */
+  var proxyInput = document.getElementById('proxy-addr');
+  var proxyHint = document.getElementById('proxy-hint');
+  var saveProxyBtn = document.getElementById('save-proxy');
+  var updateBtn = document.getElementById('update-rules');
+  var factRules = document.getElementById('fact-rules');
+  var factDate = document.getElementById('fact-date');
+  var factRendered = document.getElementById('fact-rendered');
+  var factStatus = document.getElementById('fact-status');
+  var footProxy = document.getElementById('foot-proxy');
+  var pollTimer = null;
+
+  function renderStatus(status) {
+    var st = status || {};
+    var state = st.state || 'idle';
+    factStatus.className = state === 'error' ? 'warn' : (state === 'ok' ? 'ok' : '');
+    factStatus.textContent = state === 'running' ? '更新中…'
+      : (st.message || (state === 'idle' ? '空闲' : state));
+  }
+
+  function loadInfo() {
+    return fetch('/api/pac', { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(function (info) {
+        if (document.activeElement !== proxyInput) { proxyInput.value = info.proxy || ''; }
+        footProxy.textContent = info.proxy || '—';
+        factRules.textContent = (info.rules || 0) + ' 条';
+        factDate.textContent = info.list_date || '—';
+        factRendered.textContent = info.rendered_at || '—';
+        renderStatus(info.status);
+        var running = (info.status || {}).state === 'running';
+        updateBtn.disabled = running;
+        if (running) { startPolling(); } else { stopPolling(); }
+        /* 同步移动端信息 */
+        syncMobileInfo(info);
+        return info;
+      })
+      .catch(function () {
+        factStatus.className = 'warn';
+        factStatus.textContent = '读取失败';
+        updateBtn.disabled = false;
+        return null;
+      });
+  }
+
+  function stopPolling() {
+    if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function startPolling() {
+    if (pollTimer) { return; }
+    pollTimer = window.setInterval(function () {
+      loadInfo().then(function (info) {
+        if (!info) { return; }
+        var st = info.status || {};
+        if (st.state !== 'running') {
+          toast((st.state === 'error' ? '更新失败：' : '已更新：') + (st.message || ''));
+        }
+      });
+    }, 3000);
+  }
+
+  function post(body) {
+    return fetch('/api/pac', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body,
+      cache: 'no-store'
+    }).then(function (r) {
+      return r.json().catch(function () { throw new Error('HTTP ' + r.status); });
+    }).then(function (data) {
+      if (!data.ok) { throw new Error(data.error || '操作失败'); }
+      return data;
+    });
+  }
+
+  function saveProxy() {
+    var addr = proxyInput.value.trim();
+    if (!addr) {
+      proxyInput.classList.add('bad');
+      proxyHint.textContent = '请填写代理地址，例如 192.168.31.161:7890。';
+      proxyInput.focus();
+      return;
+    }
+    saveProxyBtn.disabled = true;
+    post('action=set-proxy&proxy=' + encodeURIComponent(addr))
+      .then(function (data) {
+        proxyInput.classList.remove('bad');
+        proxyHint.textContent = '已保存，proxy.pac 与 global.pac 已重新生成。';
+        toast('代理地址已更新为 ' + data.proxy);
+        return loadInfo();
+      })
+      .catch(function (err) {
+        proxyInput.classList.add('bad');
+        proxyHint.textContent = err.message;
+        proxyInput.focus();
+        toast('保存失败：' + err.message);
+      })
+      .then(function () { saveProxyBtn.disabled = false; });
+  }
+
+  saveProxyBtn.addEventListener('click', saveProxy);
+  proxyInput.addEventListener('input', function () {
+    proxyInput.classList.remove('bad');
+    proxyHint.textContent = '格式为 IP 或主机名，可带端口，例如 192.168.31.161:7890。';
+  });
+  proxyInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+      event.preventDefault();
+      saveProxy();
+    }
+  });
+
+  updateBtn.addEventListener('click', function () {
+    updateBtn.disabled = true;
+    post('action=update')
+      .then(function () {
+        factStatus.className = '';
+        factStatus.textContent = '更新中…';
+        toast('已开始从上游更新域名名单');
+        startPolling();
+        return loadInfo();
+      })
+      .catch(function (err) {
+        updateBtn.disabled = false;
+        toast('触发失败：' + err.message);
+      });
+  });
+
+  /* ---------- 主题：系统优先（未手动选择时），暗色兜底，选择存浏览器 ---------- */
+  var toggle = document.getElementById('theme-toggle');
+  var themeMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function savedTheme() {
+    try { return window.localStorage.getItem('pac-theme'); } catch (e) { return null; }
+  }
+
+  var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+
+  function applyTheme(dark) {
+    document.documentElement.classList.toggle('dark', dark);
+    /* 手机浏览器的地址栏配色跟着页面主题走 */
+    if (themeColorMeta) { themeColorMeta.setAttribute('content', dark ? '#000000' : '#ffffff'); }
+    var label = dark ? '切换到浅色模式' : '切换到深色模式';
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('title', label + '（默认暗色；未手动选择时跟随系统变化）');
+  }
+
+  /* 默认暗色；手动选过就按选择走 */
+  applyTheme(savedTheme() ? savedTheme() === 'dark' : true);
+
+  toggle.addEventListener('click', function () {
+    var dark = !document.documentElement.classList.contains('dark');
+    applyTheme(dark);
+    try { window.localStorage.setItem('pac-theme', dark ? 'dark' : 'light'); } catch (e) { /* 忽略 */ }
+  });
+
+  /* 用户没手动选过时，系统主题变化就跟着变 */
+  function onSystemThemeChange(event) {
+    if (!savedTheme()) { applyTheme(event.matches); }
+  }
+  if (themeMQ) {
+    if (themeMQ.addEventListener) { themeMQ.addEventListener('change', onSystemThemeChange); }
+    else if (themeMQ.addListener) { themeMQ.addListener(onSystemThemeChange); }
+  }
+
+  /* 移动端：除模式卡片外，其他卡片默认折叠；桌面端始终展开 */
+  var foldCards = Array.prototype.slice.call(document.querySelectorAll('.card > details.fold'));
+  var desktopMQ = window.matchMedia('(min-width: 640px)');
+
+  function applyFoldLayout() {
+    foldCards.forEach(function (el) { el.open = desktopMQ.matches; });
+  }
+
+  foldCards.forEach(function (el) {
+    el.addEventListener('toggle', function () {
+      if (desktopMQ.matches && !el.open) { el.open = true; }
+    });
+  });
+
+  if (desktopMQ.addEventListener) { desktopMQ.addEventListener('change', applyFoldLayout); }
+  else if (desktopMQ.addListener) { desktopMQ.addListener(applyFoldLayout); }
+  applyFoldLayout();
+
+  /* ---------- 移动端合并面板交互 ---------- */
+  var mobileTokenBox = document.getElementById('token-box-mobile');
+  var mobileTokenInput = document.getElementById('token-mobile');
+  var mobileTokenHint = document.getElementById('token-hint-mobile');
+  var mobileCopyBtn = document.getElementById('copy-btn-mobile');
+  var mobileProxyInput = document.getElementById('proxy-addr-mobile');
+  var mobileProxyHint = document.getElementById('proxy-hint-mobile');
+  var mobileSaveProxyBtn = document.getElementById('save-proxy-mobile');
+  var mobileUpdateBtn = document.getElementById('update-rules-mobile');
+  var mobileFactRules = document.getElementById('fact-rules-mobile');
+  var mobileFactDate = document.getElementById('fact-date-mobile');
+  var mobileFactRendered = document.getElementById('fact-rendered-mobile');
+  var mobileFactStatus = document.getElementById('fact-status-mobile');
+
+  /* 同步移动端token */
+  if (mobileTokenInput) {
+    mobileTokenInput.value = token;
+    mobileTokenInput.addEventListener('input', function () {
+      token = mobileTokenInput.value.trim();
+      try {
+        if (token) { window.localStorage.setItem(TOKEN_KEY, token); }
+        else { window.localStorage.removeItem(TOKEN_KEY); }
+      } catch (e) { /* 隐私模式下写入失败，忽略 */ }
+      mobileTokenInput.classList.remove('bad');
+      /* 同步到桌面端 */
+      if (tokenInput) { tokenInput.value = token; }
+    });
+  }
+
+  /* 同步移动端token-box显示 */
+  function syncMobileTokenBox() {
+    if (mobileTokenBox) { mobileTokenBox.hidden = tokenBox.hidden; }
+  }
+
+  /* 移动端复制PAC地址 */
+  if (mobileCopyBtn) {
+    mobileCopyBtn.addEventListener('click', function () {
+      copyText(document.getElementById('pac-url-mobile').textContent.trim(), '已复制 PAC 地址');
+    });
+  }
+
+  /* 移动端保存代理地址 */
+  function saveMobileProxy() {
+    var addr = mobileProxyInput.value.trim();
+    if (!addr) {
+      mobileProxyInput.classList.add('bad');
+      mobileProxyHint.textContent = '请填写代理地址，例如 192.168.31.161:7890。';
+      mobileProxyInput.focus();
+      return;
+    }
+    mobileSaveProxyBtn.disabled = true;
+    post('action=set-proxy&proxy=' + encodeURIComponent(addr))
+      .then(function (data) {
+        mobileProxyInput.classList.remove('bad');
+        mobileProxyHint.textContent = '已保存，proxy.pac 与 global.pac 已重新生成。';
+        toast('代理地址已更新为 ' + data.proxy);
+        return loadInfo();
+      })
+      .catch(function (err) {
+        mobileProxyInput.classList.add('bad');
+        mobileProxyHint.textContent = err.message;
+        mobileProxyInput.focus();
+        toast('保存失败：' + err.message);
+      })
+      .then(function () { mobileSaveProxyBtn.disabled = false; });
+  }
+
+  if (mobileSaveProxyBtn) {
+    mobileSaveProxyBtn.addEventListener('click', saveMobileProxy);
+  }
+
+  if (mobileProxyInput) {
+    mobileProxyInput.addEventListener('input', function () {
+      mobileProxyInput.classList.remove('bad');
+      mobileProxyHint.textContent = '格式为 IP 或主机名，可带端口，例如 192.168.31.161:7890。';
+      /* 同步到桌面端 */
+      if (proxyInput && document.activeElement !== proxyInput) {
+        proxyInput.value = mobileProxyInput.value;
+      }
+    });
+    mobileProxyInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        saveMobileProxy();
+      }
+    });
+  }
+
+  /* 移动端更新域名名单 */
+  if (mobileUpdateBtn) {
+    mobileUpdateBtn.addEventListener('click', function () {
+      mobileUpdateBtn.disabled = true;
+      post('action=update')
+        .then(function () {
+          mobileFactStatus.className = '';
+          mobileFactStatus.textContent = '更新中…';
+          toast('已开始从上游更新域名名单');
+          startPolling();
+          return loadInfo();
+        })
+        .catch(function (err) {
+          mobileUpdateBtn.disabled = false;
+          toast('触发失败：' + err.message);
+        });
+    });
+  }
+
+  /* 同步移动端PAC信息显示 */
+  function syncMobileInfo(info) {
+    if (!info) return;
+    if (mobileProxyInput && document.activeElement !== mobileProxyInput) {
+      mobileProxyInput.value = info.proxy || '';
+    }
+    if (mobileFactRules) { mobileFactRules.textContent = (info.rules || 0) + ' 条'; }
+    if (mobileFactDate) { mobileFactDate.textContent = info.list_date || '—'; }
+    if (mobileFactRendered) { mobileFactRendered.textContent = info.rendered_at || '—'; }
+    if (mobileFactStatus) {
+      var st = info.status || {};
+      var state = st.state || 'idle';
+      mobileFactStatus.className = state === 'error' ? 'warn' : (state === 'ok' ? 'ok' : '');
+      mobileFactStatus.textContent = state === 'running' ? '更新中…'
+        : (st.message || (state === 'idle' ? '空闲' : state));
+    }
+    var running = (info.status || {}).state === 'running';
+    if (mobileUpdateBtn) { mobileUpdateBtn.disabled = running; }
+  }
+
+  /* 同步移动端token-box和proxy输入框的初始值 */
+  function syncMobileInitial() {
+    syncMobileTokenBox();
+    if (mobileProxyInput && proxyInput && document.activeElement !== mobileProxyInput) {
+      mobileProxyInput.value = proxyInput.value;
+    }
+  }
+
+  readMode();
+  loadInfo();
+  syncMobileInitial();
+})();
+</script>
+</body>
+</html>
