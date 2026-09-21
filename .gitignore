@@ -20,3 +20,6 @@ Thumbs.db
 pac/data/status.json
 pac/data/rendered.json
 pac/work/update.log
+
+# 运行时临时文件
+pac/data/update.lock
