@@ -26,14 +26,22 @@ TPL = os.path.join(HERE, "templates")
 PROXY_FILE = os.path.join(DATA, "proxy.txt")
 DOMAIN_FILE = os.path.join(DATA, "cn-domains.txt")
 EXTRA_FILE = os.path.join(DATA, "extra-domains.txt")
+PROXY_DOMAINS_FILE = os.path.join(DATA, "proxy-list.txt")
 DATE_FILE = os.path.join(DATA, "list-generated.txt")
 STATUS_FILE = os.path.join(DATA, "status.json")
 RENDERED_FILE = os.path.join(DATA, "rendered.json")
 LOCK_FILE = os.path.join(DATA, "update.lock")
 
+# 数据源：Loyalsoldier/v2ray-rules-dat 增强版（direct-list.txt）
+#   比原 felixonmars/dnsmasq-china-list 多约 700+ 条国内域名，
+#   且格式为纯域名列表，解析更简单。
+#   Release tag 格式为日期（如 202609220030），如需更新替换下方 tag 即可。
+LOYALSOLDIER_TAG = "202609220030"
 CHINA_LIST_URLS = [
-    "https://raw.githubusercontent.com/felixonmars/dnsmasq-china-list/master/accelerated-domains.china.conf",
-    "https://cdn.jsdelivr.net/gh/felixonmars/dnsmasq-china-list@master/accelerated-domains.china.conf",
+    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/"
+    + LOYALSOLDIER_TAG + "/direct-list.txt",
+    "https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@"
+    + LOYALSOLDIER_TAG + "/direct-list.txt",
 ]
 POPULAR_SOURCES = [
     ("Cisco Umbrella top-1m", "http://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip"),
@@ -69,6 +77,15 @@ def now():
 
 def read_domains():
     return [ln.strip().lower() for ln in read_text(DOMAIN_FILE).splitlines() if ln.strip()]
+
+def read_proxy_domains():
+    """读取手动添加的海外代理域名列表（纯域名，每行一个，# 开头为注释）"""
+    out = []
+    for ln in read_text(PROXY_DOMAINS_FILE).splitlines():
+        s = ln.strip().lower()
+        if s and not s.startswith("#"):
+            out.append(s)
+    return out
 
 
 def write_status(state, message=""):
@@ -128,9 +145,17 @@ def render():
     )
     date = read_text(DATE_FILE).strip() or time.strftime("%Y-%m-%d")
 
+    # 代理域名列表（海外域名明确走代理，防止被误判为直连）
+    proxy_domains = read_proxy_domains()
+    proxy_blob = "\n".join(
+        '"%s\\n" +' % d if i < len(proxy_domains) - 1 else '"%s\\n"' % d
+        for i, d in enumerate(proxy_domains)
+    ) if proxy_domains else '""'
+
     tpl = read_text(os.path.join(TPL, "proxy.tpl"))
     body = (tpl.replace("{{PROXY}}", proxy)
                .replace("{{DOMAINS}}", blob)
+               .replace("{{PROXY_DOMAINS}}", proxy_blob)
                .replace("{{COUNT}}", str(len(domains)))
                .replace("{{DATE}}", date))
     if "{{" in body:
@@ -159,15 +184,17 @@ def fetch(url, timeout=180):
 
 
 def load_china_list():
+    """从 Loyalsoldier/v2ray-rules-dat 的 direct-list.txt 加载国内域名。
+    格式为纯域名列表（每行一个域名），比原 dnsmasq 格式更简洁。"""
     last = None
     for url in CHINA_LIST_URLS:
         try:
             raw = fetch(url).decode("utf-8", "replace")
             entries = set()
             for line in raw.splitlines():
-                m = re.match(r"server=/([^/]+)/", line)
-                if m:
-                    entries.add(m.group(1).lower())
+                d = line.strip().lower()
+                if d and not d.startswith("#") and not d.startswith(";"):
+                    entries.add(d)
             if len(entries) > 10000:
                 return entries
             last = "条目过少：%d" % len(entries)
@@ -244,7 +271,7 @@ def do_update():
         write_atomic(DATE_FILE, time.strftime("%Y-%m-%d") + "\n")
         count = render()
         message = "更新完成：%d 条域名（原 %d 条），数据源 %s，热门清单 %s" % (
-            count, old, "dnsmasq-china-list", source)
+            count, old, "Loyalsoldier/v2ray-rules-dat", source)
         write_status("ok", message)
         return message
     except SystemExit as exc:

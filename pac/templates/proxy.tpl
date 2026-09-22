@@ -19,14 +19,19 @@ var FALLBACK   = PROXY_RULE + "; DIRECT";
 
 /* ------------------------------------------------------------
  * 国内域名表
- * 来源：felixonmars/dnsmasq-china-list 的 accelerated-domains.china.conf
- *       （110454 条，代表"应由国内 DNS 解析"的域名）
+ * 来源：Loyalsoldier/v2ray-rules-dat 的 direct-list.txt（增强版）
+ *       （约 11 万条，比原 dnsmasq-china-list 多 700+ 条）
  * 本表取其中被全球访问量前 100 万域名清单（Cisco Umbrella top-1m）
  * 真实命中的条目，共 {{COUNT}} 条，另人工补充少量常用域名。
  * 生成日期：{{DATE}}
  * ------------------------------------------------------------ */
 var CN_DOMAINS =
 {{DOMAINS}};
+
+/* 手动添加的海外代理域名（明确走代理，不回退直连）
+ * 生成日期：{{DATE}} */
+var PROXY_DOMAINS =
+{{PROXY_DOMAINS}};
 
 /* 国内顶级域：整域直连。
  * cn 覆盖 .cn / .com.cn / .net.cn / .gov.cn / .edu.cn 等全部后缀；
@@ -117,6 +122,12 @@ function FindProxyForURL(url, host) {
         if (map[labels.slice(i).join(".")] === 1) { return "DIRECT"; }
     }
 
-    /* 6) 其余（海外站点）走代理，代理不通则直连 */
+    /* 6) 手动添加的海外代理域名：明确走代理，不回退直连 */
+    var proxyList = PROXY_DOMAINS.split("\n");
+    for (i = 0; i < proxyList.length; i++) {
+        if (proxyList[i] !== "" && host === proxyList[i]) { return PROXY_RULE; }
+    }
+
+    /* 7) 其余（海外站点）走代理，代理不通则直连 */
     return FALLBACK;
 }
