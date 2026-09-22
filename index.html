@@ -224,7 +224,7 @@
   .links span { color: var(--fg-muted); font-size: 13px; }
   .links .copy-btn { margin-left: auto; min-height: 40px; flex-shrink: 0; }
 
-  /* 卡片折叠：桌面端始终展开，移动端默认折叠（除模式卡片） */
+  /* 卡片折叠：默认折叠，点击标题展开；桌面端同样可折叠 */
   .card > details.fold > summary {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     min-height: 44px; cursor: pointer; list-style: none;
@@ -234,11 +234,6 @@
   .fold-body { margin-top: 14px; }
   .chev { flex-shrink: 0; color: var(--fg-faint); transition: transform 200ms var(--ease); }
   details[open] > summary > .chev { transform: rotate(90deg); }
-
-  @media (min-width: 640px) {
-    .card > details.fold > summary { cursor: default; }
-    .card > details.fold > summary > .chev { display: none; }
-  }
 
   /* 客户端配置帮助（默认折叠） */
   .help { margin-top: 4px; border-top: 1px solid var(--border); }
@@ -260,6 +255,36 @@
   .help-note { margin-top: 10px; color: var(--fg-faint); font-size: 12px; }
 
   .foot { color: var(--fg-faint); font-size: 12px; text-align: center; padding: 0 16px 40px; }
+
+  /* 域名列表 */
+  .domain-section { margin-top: 20px; }
+  .domain-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .domain-toolbar input { flex: 1; min-width: 200px; }
+  .domain-list { max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-control); }
+  .domain-list .dl-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .domain-list .dl-row:last-child { border-bottom: 0; }
+  .domain-list .dl-row:hover { background: var(--gray-100); }
+  .domain-list .dl-empty { padding: 16px; text-align: center; color: var(--fg-muted); }
+  .dl-count { margin-left: auto; color: var(--fg-faint); font-size: 12px; }
+
+  /* 分页 */
+  .pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .pagination .pg-info { font-size: 13px; color: var(--fg-muted); }
+  .pagination .pg-btns { display: flex; gap: 6px; }
+
+  /* 统计 */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 12px; }
+  .stat-card { border: 1px solid var(--border); border-radius: var(--radius-control); padding: 12px 14px; background: var(--surface); }
+  .stat-card .stat-value { font-size: 20px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .stat-card .stat-label { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+  .stat-bar { height: 6px; border-radius: 3px; background: var(--gray-200); margin-top: 8px; overflow: hidden; }
+  .stat-bar > div { height: 100%; background: var(--brand-500); border-radius: 3px; }
+
+  /* 轮询超时警告 */
+  .poll-timeout { border-color: var(--err-border) !important; background: var(--err-bg) !important; }
+  .poll-timeout .poll-timeout-inner { padding: 12px 16px; }
+  .poll-timeout-text { color: var(--err-fg); font-size: 13px; font-weight: 500; }
+  .poll-timeout-hint { color: var(--err-fg); font-size: 12px; margin-top: 4px; opacity: .85; }
 
   /* 移动端合并面板 */
   .mobile-settings { display: block; }
@@ -583,7 +608,7 @@
 
   <!-- 桌面端独立面板 -->
   <section class="card desktop-only" aria-labelledby="url-title">
-    <details class="fold" open>
+    <details class="fold">
       <summary>
         <h2 id="url-title" class="section-title">PAC 地址</h2>
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -618,7 +643,7 @@
   </section>
 
   <section class="card desktop-only" aria-labelledby="info-title">
-    <details class="fold" open>
+    <details class="fold">
       <summary>
         <h2 id="info-title" class="section-title">PAC 信息</h2>
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -661,7 +686,7 @@
   </section>
 
   <section class="card desktop-only" aria-labelledby="help-title">
-    <details class="fold" open>
+    <details class="fold">
       <summary>
         <h2 id="help-title" class="section-title">客户端配置帮助</h2>
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -751,7 +776,7 @@
   </section>
 
   <section class="card desktop-only" aria-labelledby="fixed-title">
-    <details class="fold" open>
+    <details class="fold">
       <summary>
         <h2 id="fixed-title" class="section-title">固定模式地址（备用）</h2>
         <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -799,6 +824,59 @@
           </button>
         </li>
       </ul>
+      </div>
+    </details>
+  </section>
+
+  <!-- 域名列表（移动端与桌面端共用） -->
+  <section class="card" aria-labelledby="domains-title">
+    <details class="fold">
+      <summary>
+        <h2 id="domains-title" class="section-title">域名名单与统计</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+        <div class="domain-toolbar">
+          <input id="domain-search" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="搜索域名（如 baidu.com）">
+          <button id="domain-load" class="btn-secondary" type="button">加载名单</button>
+        </div>
+        <div id="domain-list-container">
+          <div class="domain-list"><div class="dl-empty">点击「加载名单」查看当前域名列表</div></div>
+        </div>
+        <div class="pagination">
+          <span class="pg-info" id="domain-pg-info">—</span>
+          <div class="pg-btns">
+            <button id="domain-prev" class="btn-secondary" type="button" disabled>上一页</button>
+            <button id="domain-next" class="btn-secondary" type="button" disabled>下一页</button>
+          </div>
+        </div>
+        <div class="stats-grid" id="domain-stats" style="display:none;"></div>
+      </div>
+    </details>
+  </section>
+
+  <!-- 海外域名查询（移动端与桌面端共用） -->
+  <section class="card" aria-labelledby="proxy-query-title">
+    <details class="fold">
+      <summary>
+        <h2 id="proxy-query-title" class="section-title">海外域名查询</h2>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
+      </summary>
+      <div class="fold-body">
+        <p class="hint">输入域名查询归属：若在国内直连名单中则显示「直连」；若不在则可加入代理名单，确保走代理不回退直连。</p>
+        <div class="domain-toolbar">
+          <input id="proxy-query-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="输入域名，如 google.com">
+          <button id="proxy-query-btn" class="btn-primary" type="button">查询</button>
+        </div>
+        <div id="proxy-query-result" style="margin-top:12px;"></div>
       </div>
     </details>
   </section>
@@ -1110,21 +1188,7 @@
     }
   });
 
-  updateBtn.addEventListener('click', function () {
-    updateBtn.disabled = true;
-    post('action=update')
-      .then(function () {
-        factStatus.className = '';
-        factStatus.textContent = '更新中…';
-        toast('已开始从上游更新域名名单');
-        startPolling();
-        return loadInfo();
-      })
-      .catch(function (err) {
-        updateBtn.disabled = false;
-        toast('触发失败：' + err.message);
-      });
-  });
+  /* updateBtn click handled below (with abort + timeout) */
 
   /* ---------- 主题：系统优先（未手动选择时），暗色兜底，选择存浏览器 ---------- */
   var toggle = document.getElementById('theme-toggle');
@@ -1163,17 +1227,17 @@
     else if (themeMQ.addListener) { themeMQ.addListener(onSystemThemeChange); }
   }
 
-  /* 移动端：除模式卡片外，其他卡片默认折叠；桌面端始终展开 */
+  /* 卡片默认折叠，点击标题展开；桌面端与移动端行为一致 */
   var foldCards = Array.prototype.slice.call(document.querySelectorAll('.card > details.fold'));
   var desktopMQ = window.matchMedia('(min-width: 640px)');
 
   function applyFoldLayout() {
-    foldCards.forEach(function (el) { el.open = desktopMQ.matches; });
+    // 不再强制展开，保持用户折叠/展开状态
   }
 
   foldCards.forEach(function (el) {
     el.addEventListener('toggle', function () {
-      if (desktopMQ.matches && !el.open) { el.open = true; }
+      // 桌面端允许自由折叠/展开，不再强制展开
     });
   });
 
@@ -1269,7 +1333,7 @@
     });
   }
 
-  /* 移动端更新域名名单 */
+  /* 移动端更新域名名单（使用与桌面端相同的改进逻辑） */
   if (mobileUpdateBtn) {
     mobileUpdateBtn.addEventListener('click', function () {
       mobileUpdateBtn.disabled = true;
@@ -1279,6 +1343,7 @@
           mobileFactStatus.textContent = '更新中…';
           toast('已开始从上游更新域名名单');
           startPolling();
+          ensureAbortBtn();
           return loadInfo();
         })
         .catch(function (err) {
@@ -1314,6 +1379,276 @@
     if (mobileProxyInput && proxyInput && document.activeElement !== mobileProxyInput) {
       mobileProxyInput.value = proxyInput.value;
     }
+  }
+
+  /* ---------- 域名名单加载 ---------- */
+  var domainOffset = 0;
+  var domainLimit = 50;
+  var domainTotal = 0;
+  var domainAll = [];   // 缓存全部域名（客户端搜索用）
+  var domainFiltered = [];
+
+  var domainSearch = document.getElementById('domain-search');
+  var domainLoadBtn = document.getElementById('domain-load');
+  var domainListContainer = document.getElementById('domain-list-container');
+  var domainPgInfo = document.getElementById('domain-pg-info');
+  var domainPrevBtn = document.getElementById('domain-prev');
+  var domainNextBtn = document.getElementById('domain-next');
+  var domainStatsEl = document.getElementById('domain-stats');
+
+  function renderDomainList() {
+    var list = domainListContainer.querySelector('.domain-list');
+    if (!list) return;
+    var html = '';
+    if (domainFiltered.length === 0) {
+      html = '<div class="dl-empty">没有匹配的域名</div>';
+    } else {
+      var start = domainOffset;
+      var end = Math.min(domainOffset + domainLimit, domainFiltered.length);
+      for (var i = start; i < end; i++) {
+        html += '<div class="dl-row"><span>' + escapeHtml(domainFiltered[i]) +
+                '</span><span class="dl-count"></span></div>';
+      }
+    }
+    list.innerHTML = html;
+
+    var totalShow = domainFiltered.length;
+    domainPgInfo.textContent = totalShow > 0
+      ? '第 ' + (domainOffset + 1) + '–' + Math.min(domainOffset + domainLimit, totalShow) + ' 条，共 ' + totalShow + ' 条'
+      : '无数据';
+    domainPrevBtn.disabled = domainOffset === 0;
+    domainNextBtn.disabled = (domainOffset + domainLimit) >= totalShow;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function filterDomains() {
+    var q = (domainSearch ? domainSearch.value.trim().toLowerCase() : '');
+    if (!q) {
+      domainFiltered = domainAll.slice();
+    } else {
+      domainFiltered = domainAll.filter(function (d) { return d.indexOf(q) >= 0; });
+    }
+    domainOffset = 0;
+    renderDomainList();
+  }
+
+  function loadDomainList() {
+    if (!domainLoadBtn) return;
+    domainLoadBtn.disabled = true;
+    domainLoadBtn.textContent = '加载中…';
+    fetch('/api/pac', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'action=list&limit=5000',
+      cache: 'no-store'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) throw new Error(data.error || '加载失败');
+        domainAll = data.domains || [];
+        domainTotal = data.total;
+        filterDomains();
+        renderStats(data.top_tlds || [], data.total);
+        toast('已加载 ' + domainTotal + ' 条域名');
+      })
+      .catch(function (err) {
+        toast('加载域名列表失败：' + err.message);
+        domainListContainer.innerHTML = '<div class="domain-list"><div class="dl-empty">加载失败：' + escapeHtml(err.message) + '</div></div>';
+      })
+      .then(function () {
+        domainLoadBtn.disabled = false;
+        domainLoadBtn.textContent = '加载名单';
+      });
+  }
+
+  function renderStats(topTlds, total) {
+    if (!domainStatsEl) return;
+    if (!topTlds || topTlds.length === 0) {
+      domainStatsEl.style.display = 'none';
+      return;
+    }
+    domainStatsEl.style.display = '';
+    var maxCount = topTlds[0].count;
+    var html = '';
+    for (var i = 0; i < topTlds.length; i++) {
+      var t = topTlds[i];
+      var pct = maxCount > 0 ? (t.count / maxCount * 100) : 0;
+      html += '<div class="stat-card">' +
+              '<div class="stat-value">' + t.count + '</div>' +
+              '<div class="stat-label">.' + escapeHtml(t.tld) + '</div>' +
+              '<div class="stat-bar"><div style="width:' + pct + '%"></div></div>' +
+              '</div>';
+    }
+    // 总数卡片
+    html = '<div class="stat-card"><div class="stat-value">' + total + '</div>' +
+           '<div class="stat-label">域名总数</div></div>' + html;
+    domainStatsEl.innerHTML = html;
+  }
+
+  if (domainLoadBtn) domainLoadBtn.addEventListener('click', loadDomainList);
+  if (domainSearch) {
+    domainSearch.addEventListener('input', function () {
+      clearTimeout(domainSearch._t);
+      domainSearch._t = setTimeout(filterDomains, 200);
+    });
+  }
+  if (domainPrevBtn) domainPrevBtn.addEventListener('click', function () {
+    domainOffset = Math.max(0, domainOffset - domainLimit);
+    renderDomainList();
+  });
+  if (domainNextBtn) domainNextBtn.addEventListener('click', function () {
+    domainOffset = domainOffset + domainLimit;
+    renderDomainList();
+  });
+
+  /* ---------- 轮询超时与 abort ---------- */
+  var POLL_TIMEOUT_MS = 600000; // 10 分钟
+  var pollStartTime = 0;
+
+  function startPolling() {
+    stopPolling();
+    pollStartTime = Date.now();
+    pollTimer = window.setInterval(function () {
+      // 超时检查
+      if (Date.now() - pollStartTime > POLL_TIMEOUT_MS) {
+        stopPolling();
+        setStatus('err', '更新超时（超过 10 分钟未完成），可能已卡住');
+        updateBtn.disabled = false;
+        toast('更新超时，请点击下方按钮重试或取消');
+        return;
+      }
+      loadInfo().then(function (info) {
+        if (!info) { return; }
+        var st = info.status || {};
+        if (st.state !== 'running') {
+          toast((st.state === 'error' ? '更新失败：' : '已更新：') + (st.message || ''));
+        }
+      });
+    }, 3000);
+  }
+
+  /* abort 按钮（动态插入到状态栏） */
+  function ensureAbortBtn() {
+    if (document.getElementById('abort-btn')) return;
+    var wrap = document.createElement('button');
+    wrap.type = 'button';
+    wrap.id = 'abort-btn';
+    wrap.className = 'btn-secondary';
+    wrap.style.marginLeft = '10px';
+    wrap.textContent = '取消更新';
+    wrap.addEventListener('click', function () {
+      fetch('/api/pac', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'action=abort',
+        cache: 'no-store'
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.ok) {
+            toast('已取消更新');
+            stopPolling();
+            updateBtn.disabled = false;
+            loadInfo();
+          } else {
+            toast('取消失败：' + (data.error || '未知错误'));
+          }
+        })
+        .catch(function (err) {
+          toast('取消请求失败：' + err.message);
+        });
+    });
+    statusEl.firstChild.appendChild(wrap);
+  }
+
+  /* 修改 updateBtn 点击行为：点击时显示 abort 按钮 */
+  var _origUpdateClick = updateBtn.onclick;
+  updateBtn.addEventListener('click', function () {
+    updateBtn.disabled = true;
+    post('action=update')
+      .then(function () {
+        factStatus.className = '';
+        factStatus.textContent = '更新中…';
+        toast('已开始从上游更新域名名单');
+        startPolling();
+        ensureAbortBtn();
+        return loadInfo();
+      })
+      .catch(function (err) {
+        updateBtn.disabled = false;
+        toast('触发失败：' + err.message);
+      });
+  });
+
+  /* ---------- 海外域名查询 ---------- */
+  var proxyQueryInput = document.getElementById('proxy-query-input');
+  var proxyQueryBtn = document.getElementById('proxy-query-btn');
+  var proxyQueryResult = document.getElementById('proxy-query-result');
+
+  function renderQueryResult(msg, isOk) {
+    if (!proxyQueryResult) return;
+    proxyQueryResult.innerHTML = '';
+    var div = document.createElement('div');
+    div.className = 'status-chip' + (isOk ? ' ok' : ' err');
+    div.style.display = 'inline-flex';
+    div.style.alignItems = 'center';
+    div.style.gap = '8px';
+    div.style.padding = '8px 14px';
+    div.style.borderRadius = '9999px';
+    div.style.border = '1px solid';
+    div.style.fontSize = '13px';
+    div.textContent = msg;
+    proxyQueryResult.appendChild(div);
+  }
+
+  function queryProxyDomain() {
+    if (!proxyQueryInput || !proxyQueryBtn) return;
+    var domain = proxyQueryInput.value.trim().toLowerCase();
+    if (!domain) {
+      renderQueryResult('请输入域名', false);
+      return;
+    }
+    proxyQueryBtn.disabled = true;
+    proxyQueryBtn.textContent = '查询中…';
+
+    // 直接尝试添加到代理名单（服务端会检查是否已在直连名单中）
+    fetch('/api/pac', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'action=add-proxy-domain&domain=' + encodeURIComponent(domain),
+      cache: 'no-store'
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.ok) {
+          renderQueryResult('✓ ' + domain + ' 已加入代理名单', true);
+          toast('已添加 ' + domain + ' 到代理名单');
+        } else {
+          renderQueryResult('✗ ' + (res.error || '操作失败'), false);
+        }
+      })
+      .catch(function (err) {
+        renderQueryResult('✗ 请求失败：' + err.message, false);
+      })
+      .then(function () {
+        proxyQueryBtn.disabled = false;
+        proxyQueryBtn.textContent = '查询';
+      });
+  }
+
+  if (proxyQueryBtn) {
+    proxyQueryBtn.addEventListener('click', queryProxyDomain);
+  }
+  if (proxyQueryInput) {
+    proxyQueryInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+        event.preventDefault();
+        queryProxyDomain();
+      }
+    });
   }
 
   readMode();
