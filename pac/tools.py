@@ -32,16 +32,15 @@ STATUS_FILE = os.path.join(DATA, "status.json")
 RENDERED_FILE = os.path.join(DATA, "rendered.json")
 LOCK_FILE = os.path.join(DATA, "update.lock")
 
-# 数据源：Loyalsoldier/v2ray-rules-dat 增强版（direct-list.txt）
+# 数据源：Loyalsoldier/v2ray-rules-dat 的 release 分支（direct-list.txt）
 #   比原 felixonmars/dnsmasq-china-list 多约 700+ 条国内域名，
 #   且格式为纯域名列表，解析更简单。
-#   Release tag 格式为日期（如 202609220030），如需更新替换下方 tag 即可。
-LOYALSOLDIER_TAG = "202609220030"
+#   用 release 分支而非写死的 release tag：tag 会被上游清理导致 404，
+#   release 分支始终是最新的生成结果。
 CHINA_LIST_URLS = [
-    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/"
-    + LOYALSOLDIER_TAG + "/direct-list.txt",
-    "https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@"
-    + LOYALSOLDIER_TAG + "/direct-list.txt",
+    "https://cdn.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/direct-list.txt",
+    "https://fastly.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/direct-list.txt",
+    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/direct-list.txt",
 ]
 POPULAR_SOURCES = [
     ("Cisco Umbrella top-1m", "http://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip"),
@@ -249,7 +248,36 @@ def match_domains(china_set, hosts):
     return hits
 
 
+def pid_alive(pid_text):
+    """判断锁文件里的 PID 是否仍在运行；无效 PID 视为不在。"""
+    if not pid_text or not pid_text.strip().isdigit():
+        return False
+    try:
+        os.kill(int(pid_text.strip()), 0)
+        return True
+    except OSError:
+        return False
+
+
+def stale_running(status):
+    """running 状态但更新进程已经不在了（被杀/重启/启动失败），视为中断。
+
+    刚触发后给 120 秒宽限期，等待 tools.py 建立锁文件。
+    """
+    if status.get("state") != "running":
+        return False
+    try:
+        updated = time.mktime(time.strptime(status.get("updated", ""),
+                                             "%Y-%m-%d %H:%M:%S"))
+    except (TypeError, ValueError):
+        return True
+    if time.time() - updated < 120:
+        return False
+    return not pid_alive(read_text(LOCK_FILE))
+
+
 def do_update():
+    os.makedirs(WORK, exist_ok=True)  # 后台日志写在 work/ 下，目录不能缺
     with open(LOCK_FILE, "w") as fh:
         fh.write(str(os.getpid()))
     try:
@@ -303,12 +331,17 @@ def update_locked():
 
 
 def cmd_info():
+    status = read_status()
+    if stale_running(status):
+        # 更新任务中断时把 running 复位，否则前端会永远显示“更新中…”
+        write_status("error", "上次更新已中断（任务进程不在运行），请重新点「从上游更新域名名单」")
+        status = read_status()
     info = {
         "ok": True,
         "proxy": read_text(PROXY_FILE).strip(),
         "rules": len(read_domains()),
         "list_date": read_text(DATE_FILE).strip(),
-        "status": read_status(),
+        "status": status,
     }
     info.update({k: v for k, v in read_rendered().items()})
     print(json.dumps(info, ensure_ascii=False))

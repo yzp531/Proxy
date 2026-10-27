@@ -105,6 +105,8 @@ if action == "update" then
                  .. now .. '"}\n')
         fh:close()
     end
+    -- work/ 存放后台日志，目录缺失会让重定向失败、任务根本没启动就退出
+    os.execute("mkdir -p " .. PAC .. "/work")
     os.execute("cd " .. PAC .. " && nohup " .. PY .. " " .. TOOLS
                .. " update >> work/update.log 2>&1 &")
     reply('{"ok":true,"state":"running"}')
@@ -202,7 +204,8 @@ if action == "add-proxy-domain" then
     pf:write(domain .. "\n")
     pf:close()
 
-    -- 重新渲染 PAC
+    -- 重新渲染 PAC（同样先确保 work/ 存在）
+    os.execute("mkdir -p " .. PAC .. "/work")
     os.execute("cd " .. PAC .. " && nohup " .. PY .. " " .. TOOLS
                .. " render >> work/render.log 2>&1 &")
 
