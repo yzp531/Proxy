@@ -8,7 +8,9 @@
 - **版本号格式 `vX.Y.Z`**（例：`v0.0.1`、`v0.0.2`）；每次发新版本，最后一位加 1。
 - **每个版本要有"三件套"，名字都用 `vX.Y.Z`**：
 
-  1. **分支**：`git branch vX.Y.Z <commit>`，并把工作区切到该分支（`git checkout vX.Y.Z`）
+  1. **分支**：`git branch vX.Y.Z <commit>`，并把工作区切到该分支。
+     ⚠️ 分支与 tag 同名，一旦打过 tag，`git merge vX.Y.Z` / `git checkout vX.Y.Z`
+     会歧义解析到 tag 上，**必须显式写 `refs/heads/vX.Y.Z`**。
   2. **标签**：annotated tag —— `git tag -a vX.Y.Z -m "vX.Y.Z …"`
   3. **Release**：`gh release create vX.Y.Z --latest`（新版本设为 Latest；补发布旧版本时加 `--latest=false`）
 
