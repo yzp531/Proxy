@@ -37,6 +37,15 @@
   数据源是 `pac/templates/*.tpl` + `pac/data/*.txt`，**不要手改** `proxy.pac` 等生成物。
 - PAC 代码保持 **ES3 语法**（Windows WinHTTP 的 JScript 不支持 `let` / `Set` / 箭头函数）。
 
+## 管理密钥
+
+- admin.lua 的写操作（set-proxy / update / abort / add-proxy-domain）与 api.lua 的模式
+  切换受 **切换密钥** 保护：正本在 `pac/token.txt`（单行，已 gitignore，不入库）。
+- 站点经 Cloudflare 回源，客户端内网 IP 无法出现在服务端，**不要**尝试做局域网
+  白名单；浏览器本地只存出示用的凭据（localStorage `pac-switch-token`）。
+- 更换密钥 = 重写 `pac/token.txt` 为一行新随机串（`openssl rand -hex 16`），
+  全部已填设备需重填一次。
+
 ## 前端
 
 - `index.html` 是单文件页面，默认暗色主题，遵循 web-design 规范；
