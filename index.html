@@ -967,6 +967,8 @@
         setEnabled(true);
         tokenBox.hidden = !data.token_required;
         syncMobileTokenBox();
+        /* 需要密钥但浏览器里还没存过密钥时，展开折叠面板让密钥框直接可见 */
+        if (data.token_required && !token) { openTokenFolds(); }
         setStatus('ok', '当前：' + (LABELS[current] || current));
       })
       .catch(function () {
@@ -1137,6 +1139,16 @@
     }, 3000);
   }
 
+  function openTokenFolds() {
+    /* 密钥框收在「PAC 设置」折叠面板里，先展开面板才找得到 */
+    var boxes = [tokenBox, mobileTokenBox];
+    for (var i = 0; i < boxes.length; i++) {
+      if (!boxes[i]) { continue; }
+      var fold = boxes[i].closest ? boxes[i].closest('details') : null;
+      if (fold) { fold.open = true; }
+    }
+  }
+
   function post(body) {
     return fetch('/api/pac', {
       method: 'POST',
@@ -1150,11 +1162,23 @@
     }).then(function (res) {
       if (!res.data.ok) {
         if (res.status === 403) {
+          openTokenFolds();
           tokenBox.hidden = false;
           syncMobileTokenBox();
+          if (mobileTokenBox) { mobileTokenBox.hidden = false; }
           tokenInput.classList.add('bad');
           tokenHint.textContent = '密钥不正确，请重新填写。';
-          tokenInput.focus();
+          if (mobileTokenInput && mobileTokenHint) {
+            mobileTokenInput.classList.add('bad');
+            mobileTokenHint.textContent = '密钥不正确，请重新填写。';
+          }
+          /* 聚焦当前设备上真正可见的那个输入框 */
+          var target = (tokenBox.offsetParent !== null) ? tokenBox : mobileTokenBox;
+          var aim = (tokenBox.offsetParent !== null) ? tokenInput : mobileTokenInput;
+          if (target && target.scrollIntoView) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          if (aim && aim.offsetParent !== null) { aim.focus(); }
           throw new Error('需要填写切换密钥');
         }
         throw new Error(res.data.error || '操作失败');
@@ -1630,7 +1654,8 @@
     fetch('/api/pac', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'action=add-proxy-domain&domain=' + encodeURIComponent(domain),
+      body: 'action=add-proxy-domain&domain=' + encodeURIComponent(domain) +
+            '&token=' + encodeURIComponent(token),
       cache: 'no-store'
     })
       .then(function (r) { return r.json(); })
