@@ -1141,13 +1141,25 @@
     return fetch('/api/pac', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body,
+      body: body + '&token=' + encodeURIComponent(token),
       cache: 'no-store'
     }).then(function (r) {
-      return r.json().catch(function () { throw new Error('HTTP ' + r.status); });
-    }).then(function (data) {
-      if (!data.ok) { throw new Error(data.error || '操作失败'); }
-      return data;
+      return r.json()
+        .catch(function () { throw new Error('HTTP ' + r.status); })
+        .then(function (data) { return { status: r.status, data: data }; });
+    }).then(function (res) {
+      if (!res.data.ok) {
+        if (res.status === 403) {
+          tokenBox.hidden = false;
+          syncMobileTokenBox();
+          tokenInput.classList.add('bad');
+          tokenHint.textContent = '密钥不正确，请重新填写。';
+          tokenInput.focus();
+          throw new Error('需要填写切换密钥');
+        }
+        throw new Error(res.data.error || '操作失败');
+      }
+      return res.data;
     });
   }
 

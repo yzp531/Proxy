@@ -36,6 +36,22 @@ end
 
 local method = ngx.req.get_method()
 
+-- 切换密钥：pac/token.txt 存在时，写操作必须携带正确 token（与 api.lua 同一机制）
+local TOKEN_FILE = PAC .. "/token.txt"
+local function required_token()
+    local f = io.open(TOKEN_FILE, "r")
+    if not f then return nil end
+    local t = f:read("*l")
+    f:close()
+    if t == nil or t == "" then return nil end
+    return t
+end
+local function token_ok()
+    local need = required_token()
+    if need == nil then return true end
+    return arg("token") == need
+end
+
 -- 读取信息
 if method ~= "POST" then
     local out = run(PY .. " " .. TOOLS .. " info")
@@ -48,6 +64,14 @@ if method ~= "POST" then
 end
 
 local action = arg("action")
+
+-- 写操作受密钥保护（list 等只读操作不拦）
+local MUTATING = { ["set-proxy"] = true, ["update"] = true,
+                   ["abort"] = true, ["add-proxy-domain"] = true }
+if MUTATING[action] and not token_ok() then
+    reply('{"ok":false,"error":"需要填写切换密钥"}', 403)
+    return
+end
 
 -- 修改代理地址
 if action == "set-proxy" then

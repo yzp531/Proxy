@@ -26,3 +26,4 @@ pac/data/update.lock
 
 # Python 缓存
 __pycache__/
+pac/token.txt
