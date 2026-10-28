@@ -12,6 +12,7 @@
 import json
 import os
 import re
+import signal
 import sys
 import time
 import urllib.request
@@ -276,10 +277,19 @@ def stale_running(status):
     return not pid_alive(read_text(LOCK_FILE))
 
 
+UPDATE_TOTAL_SECONDS = 900  # 更新任务总时限；网络挂起时兜底，别把状态卡在 running
+
+
+def _on_update_timeout(signum, frame):
+    raise TimeoutError("更新总耗时超过 15 分钟，已中断")
+
+
 def do_update():
     os.makedirs(WORK, exist_ok=True)  # 后台日志写在 work/ 下，目录不能缺
     with open(LOCK_FILE, "w") as fh:
         fh.write(str(os.getpid()))
+    old_sig = signal.signal(signal.SIGALRM, _on_update_timeout)
+    signal.alarm(UPDATE_TOTAL_SECONDS)
     try:
         write_status("running", "正在获取国内域名源…")
         china = load_china_list()
@@ -309,6 +319,8 @@ def do_update():
         write_status("error", "更新失败：%s" % exc)
         raise
     finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_sig)
         if os.path.exists(LOCK_FILE):
             os.remove(LOCK_FILE)
 
